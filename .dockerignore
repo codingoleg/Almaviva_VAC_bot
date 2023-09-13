@@ -3,7 +3,7 @@
 /__pycache__/
 /db/users.db
 /pics/
-/telegram/logs/*.*
+/telegram/logs/*.log
 /venv/
 .gitignore
 *.md

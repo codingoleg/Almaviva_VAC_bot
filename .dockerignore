@@ -1,0 +1,9 @@
+/.git/
+/.idea/
+/__pycache__/
+/db/users.db
+/pics/
+/telegram/logs/*.*
+/venv/
+.gitignore
+*.md

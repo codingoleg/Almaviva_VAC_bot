@@ -1,5 +1,5 @@
 /venv/
 /.idea/
 /__pycache__/
-/telegram/logs/
+/telegram/logs/*.log
 /db/users.db

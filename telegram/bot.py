@@ -274,9 +274,9 @@ async def dp_check_person_1(message: Message):
                     fernet.encrypt(message.text.encode()))
     # Retrieve all data for person 1 to print out
     _, name, surname, passport, phone, email = [data for data in (
-            db.select_data(message.from_user.id, db.PERSON_1, '*'))]
+        db.select_data(message.from_user.id, db.PERSON_1, '*'))]
     await message.answer(msg.print_out_person(
-            msg.PERSON_1, name, surname, passport, phone, email))
+        msg.PERSON_1, name, surname, passport, phone, email))
     await message.answer(msg.IS_CORRECT,
                          reply_markup=kb.check_person_1(message.from_user.id))
     await dp.current_state().reset_state()
@@ -336,7 +336,7 @@ async def dp_check_person_2(message: Message):
                     fernet.encrypt(message.text.encode()))
     # Retrieve all data for person 2 to print out
     _, name, surname, passport, phone, email = [data for data in (
-            db.select_data(message.from_user.id, db.PERSON_2, '*'))]
+        db.select_data(message.from_user.id, db.PERSON_2, '*'))]
     await message.answer(msg.print_out_person(
         msg.PERSON_1, name, surname, passport, phone, email))
     await message.answer(msg.IS_CORRECT, reply_markup=kb.check_person_2())
@@ -521,6 +521,24 @@ async def dp_unban(callback: CallbackQuery):
     db.update_value(modify_user, db.BANNED, db.BAN, False)
     await callback.answer()
     await callback.message.answer(msg.admin_user_unban(modify_user))
+    modify_user = 0
+    await dp.current_state().set_state(msg.ADMIN)
+
+
+@dp.callback_query_handler(text=msg.CALLBACK_USER_DELETE, state=msg.ACTION)
+async def dp_delete_user(callback: CallbackQuery):
+    """Deletes user"""
+    global modify_user
+    user_id_exists = db.user_id_exists(modify_user, db.ACCOUNT)
+    if user_id_exists:
+        is_active = db.select_data(modify_user, db.ACCOUNT, db.IS_ACTIVE)[0]
+        if is_active:
+            await cancel_task(modify_user)
+        db.delete_user(modify_user)
+        await callback.message.answer(msg.ACC_DELETE,
+                                      reply_markup=kb.acc_delete())
+    else:
+        await callback.message.answer(msg.ACC_NOT_FOUND)
     modify_user = 0
     await dp.current_state().set_state(msg.ADMIN)
 

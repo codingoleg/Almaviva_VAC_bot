@@ -101,7 +101,11 @@ def admin_panel():
     btn_4 = InlineKeyboardButton(
         msg.CHOOSE_UNBAN, callback_data=msg.CALLBACK_UNBAN
     )
-    return InlineKeyboardMarkup(row_width=2).add(btn_1, btn_2, btn_3, btn_4)
+    btn_5 = InlineKeyboardButton(
+        msg.CHOOSE_UNBAN, callback_data=msg.CALLBACK_USER_DELETE
+    )
+    return InlineKeyboardMarkup(row_width=2).add(btn_1, btn_2, btn_3, btn_4,
+                                                 btn_5)
 
 
 class Calendar:

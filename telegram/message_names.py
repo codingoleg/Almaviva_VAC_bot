@@ -21,7 +21,7 @@ ADMIN_HELP = '/user\n' \
              '/show_active_users\n' \
              '/show_ready_users\n' \
              '/start_ready_users\n' \
-             '/admin_stop'
+             '/admin_stop\n'
 
 # Account
 ACC_DELETE = 'Удалить акканут?'
@@ -49,6 +49,7 @@ CALLBACK_START = 'CALLBACK_START'
 CALLBACK_STOP = 'CALLBACK_STOP'
 CALLBACK_BAN = 'CALLBACK_BAN'
 CALLBACK_UNBAN = 'CALLBACK_UNBAN'
+CALLBACK_USER_DELETE = 'Удалить аккаунт'
 
 # Choose buttons
 CHOOSE_START = 'Старт'

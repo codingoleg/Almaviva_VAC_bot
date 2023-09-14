@@ -412,6 +412,12 @@ async def dp_run_scanning(user_id: int):
         await bot.send_message(
             user_id, msg.successful_appointment(YEAR, month, day, free_time)
         )
+        # Msg for admin
+        await bot.send_message(
+            ADMIN_ID,
+            text=f'{user_id}: '
+                 f'{msg.successful_appointment(YEAR, month, day, free_time)}'
+        )
         loggers.log(
             user_id,
             msg.successful_appointment(YEAR, month, day, free_time),

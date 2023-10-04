@@ -423,6 +423,7 @@ async def dp_run_scanning(user_id: int):
             msg.successful_appointment(YEAR, month, day, free_time),
             loggers.INFO
         )
+        await cancel_task(user_id)
     elif app_result is None:
         loggers.log(user_id, msg.WRONG_DATES, loggers.WARNING)
         await bot.send_message(ADMIN_ID, msg.SCAN_STOPPED)

@@ -1461,6 +1461,6 @@ TEMPLATE_FOR_2_PERSONS = {
     "avsFree": False,
     "consulatPaid": False,
     "services": [],
-    "paymentMethod": "CASH",
+    "paymentMethod": "CARD",
     "appointment": {}
 }

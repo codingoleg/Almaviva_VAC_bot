@@ -1,6 +1,5 @@
 # Table 'account' columns
 USER_ID = 'user_id'
-NUM_OF_PERSONS = 'num_of_persons'
 CITY = 'required_city'
 USERNAME_ALMA = 'username'
 PASSWORD_ALMA = 'password'
@@ -14,13 +13,6 @@ IS_ACTIVE = 'is_active'
 LAST_REQUEST = 'last_request'
 BAN = 'ban'
 START_TIME = 'start_time'
-
-# Table 'person_1' and table 'person_2' columns
-NAME = 'name'
-SURNAME = 'surname'
-PASSPORT = 'passport'
-PHONE = 'phone'
-EMAIL = 'applicantEmail'
 
 # Table 'success' columns
 ATTEMPTS = 'attempts'

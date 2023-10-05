@@ -5,7 +5,7 @@ import db
 import telegram.loggers as loggers
 
 __all__ = [
-    'user_id_exists', 'check_data_acc', 'check_data_person', 'reset_values',
+    'user_id_exists', 'check_data_acc', 'reset_values',
     'select_data', 'delete_user', 'update_value', 'update_values',
     'insert_row', 'select_active_users', 'create_all_tables'
 ]
@@ -20,7 +20,6 @@ def create_table_acc():
                 {db.USER_ID}         INTEGER NOT NULL PRIMARY KEY,
                 {db.USERNAME_ALMA}   TEXT,
                 {db.PASSWORD_ALMA}   TEXT,
-                {db.NUM_OF_PERSONS}  TEXT,
                 {db.CITY}            TEXT,
                 {db.ST_MONTH}        INTEGER,
                 {db.ST_DAY}          INTEGER,
@@ -31,20 +30,6 @@ def create_table_acc():
                 {db.IS_ACTIVE}       INTEGER DEFAULT 0,
                 {db.LAST_REQUEST}    TEXT,
                 {db.ATTEMPTS}        INTEGER DEFAULT 0 
-            )''')
-
-
-def create_table_person(table_person: str):
-    with sq.connect(DB_PATH) as con:
-        cur = con.cursor()
-        cur.execute(f'''
-            CREATE TABLE IF NOT EXISTS {table_person} (
-                {db.USER_ID}   INTEGER NOT NULL PRIMARY KEY,
-                {db.NAME}      TEXT,
-                {db.SURNAME}   TEXT,
-                {db.PASSPORT}  TEXT,
-                {db.PHONE}     TEXT,
-                {db.EMAIL}     TEXT
             )''')
 
 
@@ -73,8 +58,6 @@ def create_banned():
 
 def create_all_tables():
     create_table_acc()
-    create_table_person(db.PERSON_1)
-    create_table_person(db.PERSON_2)
     create_table_success()
     create_banned()
 
@@ -83,7 +66,7 @@ def drop_all_tables():
     """Except 'banned'"""
     with sq.connect(DB_PATH) as con:
         cur = con.cursor()
-        for table in (db.ACCOUNT, db.PERSON_1, db.PERSON_2, db.SUCCESS):
+        for table in (db.ACCOUNT, db.SUCCESS):
             cur.execute(f'DROP TABLE IF EXISTS {table}')
 
 
@@ -134,7 +117,7 @@ def update_values(user_id: int, table: str, columns: tuple[str, str],
 def delete_user(user_id: int):
     with sq.connect(DB_PATH) as con:
         cur = con.cursor()
-        for table in (db.ACCOUNT, db.PERSON_1, db.PERSON_2, db.SUCCESS):
+        for table in (db.ACCOUNT, db.SUCCESS):
             query = f'DELETE FROM {table} WHERE {db.USER_ID}={user_id}'
             loggers.log(user_id, query, loggers.INFO)
             cur.execute(query)
@@ -162,13 +145,6 @@ def reset_values(table: str, column: str, value=False):
 
 def check_data_acc() -> list[Tuple[int]]:
     query = f'SELECT * FROM {db.ACCOUNT}'
-    with sq.connect(DB_PATH) as con:
-        cur = con.cursor()
-        return cur.execute(query).fetchall()
-
-
-def check_data_person(num_of_persons: str) -> list[Tuple[int]]:
-    query = f'SELECT * FROM person_{num_of_persons}'
     with sq.connect(DB_PATH) as con:
         cur = con.cursor()
         return cur.execute(query).fetchall()

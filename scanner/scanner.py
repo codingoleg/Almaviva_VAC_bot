@@ -13,7 +13,6 @@ from aiohttp.client_reqrep import ClientResponse
 from config import redis_host
 from encrypting.encrypting import fernet
 from .templates.ru.cities import CITIES
-from .templates.ru.persons import TEMPLATE_FOR_1_PERSON, TEMPLATE_FOR_2_PERSONS
 
 REDIS_CLIENT = redis.Redis(host=redis_host)
 
@@ -67,7 +66,6 @@ class Appointment:
         self.headers = self.get_headers()
         self.city = fernet.decrypt(
             db.select_data(user_id, db.ACCOUNT, db.CITY)[0]).decode()
-        self.template = self.complete_template_person(self.city)
         self.attempts = db.select_data(user_id, db.ACCOUNT, db.ATTEMPTS)[0]
         self.errors = (
             aiohttp.ClientConnectionError,
@@ -127,7 +125,7 @@ class Appointment:
         url = f"{URL}api/sites/appointment-slots/?date={day}/{month}/" \
               f"{YEAR}&siteId={CITIES[self.city]['id']}"
 
-        await asyncio.sleep(uniform(4, 12))
+        await asyncio.sleep(uniform(5, 10))
         while True:
             try:
                 async with ClientSession(timeout=TIMEOUT) as session:
@@ -137,7 +135,7 @@ class Appointment:
             else:
                 break
 
-        if response.status == 200:
+        if await response.json():
             scanning = f'Scanning... {YEAR}/{month}/{day}'
             current_time = datetime.now(MOSCOW_TZ).strftime('%H:%M:%S')
             db.update_value(self.user_id, db.ACCOUNT, db.LAST_REQUEST,
@@ -151,93 +149,34 @@ class Appointment:
                 loggers.log(self.user_id, error, loggers.ERROR)
         elif response.status == 401:
             return
-        else:
-            loggers.log(self.user_id, str(response.status),
-                        loggers.WARNING)
 
-    def compile_credentials(self, table: str) -> Dict:
-        """Compiles credentials from the db user data.
-        Returns:
-            Compiled credentials.
-        """
-        name, surname, passport, phone, email = [
-            fernet.decrypt(data).decode()
-            for data in db.select_data(self.user_id, table, '*')[1:]
-        ]
-        credentials = {
-            'name': name,
-            'surname': surname,
-            'passport': passport,
-            'phone': phone,
-            'applicantEmail': email
-        }
-        return credentials
-
-    def complete_template_person(self, city: str) -> Dict:
-        """Completes the template with personal credentials.
-        Returns:
-            Completed template without date and time data.
-        """
-        num_of_persons = db.select_data(self.user_id, db.ACCOUNT,
-                                        db.NUM_OF_PERSONS)[0]
-        if num_of_persons == '1':
-            template = TEMPLATE_FOR_1_PERSON
-        elif num_of_persons == '2':
-            template = TEMPLATE_FOR_2_PERSONS
-            # Add second person if needed
-            template['folders'][1]['person'] = \
-                self.compile_credentials(db.PERSON_2)
-        else:
-            raise ValueError('Number of persons should be 1 or 2')
-
-        # Add first person
-        template['folders'][0]['person'] = \
-            self.compile_credentials(db.PERSON_1)
-        template['site'] = CITIES[city]
-
-        return template
-
-    def complete_template_date(self, month: str, day: str, free_time: str
-                               ) -> Dict:
-        """Completes the template with date and time data.
-        Returns:
-            Fully completed template.
-        """
-        single_date = f"{YEAR}-{month}-{day}T00:00:00.000Z"
-        self.template['appointment']['appointmentDate'] = single_date
-        self.template['appointment']['appointmentTime'] = free_time
-        return self.template
-
-    async def create_app(self, month: str, day: str, free_time: str) -> bool:
+    async def find_free_time(self, month: str, day: str, time: str) -> bool:
         """Tries to create an appointment with the completed template.
         Returns:
             True, if an appointment was successfully created.
             False otherwise.
         """
-        api_create_app = URL + 'api/save-reservation/?online=false&reference='
-        completed_template = self.complete_template_date(month, day, free_time)
-        await asyncio.sleep(uniform(2, 9))
+        url = f"{URL}api/sites/appointments-validation/?siteId=" \
+              f"{CITIES[self.city]['id']}&appointmentDate={day}/" \
+              f"{month}/{YEAR}&appointmentTime={time}&persons=1"
+        await asyncio.sleep(uniform(5, 15))
         while True:
             try:
                 async with ClientSession(timeout=TIMEOUT) as session:
-                    response = await session.post(
-                        url=api_create_app,
-                        headers=self.headers,
-                        json=completed_template
-                    )
+                    response = await session.get(url=url, headers=self.headers)
             except self.errors as error:
                 loggers.log(self.user_id, error, loggers.ERROR)
             else:
                 break
 
-        if response.status == 202:
-            success_row = (self.user_id, int(month), int(day), free_time,
+        if await response.text() == 'true':
+            success_row = (self.user_id, int(month), int(day), time,
                            self.attempts)
             db.insert_row(db.SUCCESS, '', success_row)
             db.update_value(self.user_id, db.ACCOUNT, db.ATTEMPTS, 0)
             loggers.log(self.user_id, f'{self.user_id} completed')
             return True
-        else:
+        elif await response.text() == 'false':
             current_time = datetime.now(MOSCOW_TZ).strftime('%H:%M:%S')
             self.attempts += 1
             db.update_values(
@@ -248,8 +187,14 @@ class Appointment:
             )
             # Logs only 'invisible' time intervals here. Read README
             loggers.log(self.user_id, f'\t {self.user_id} [{current_time}] '
-                                      f'{free_time} is occupied')
+                                      f'{time} is occupied')
             return False
+        else:
+            loggers.log(
+                self.user_id,
+                f'{str(response.status)} {response.text()}: Unknown response',
+                loggers.WARNING
+            )
 
     async def run_scanning(self) -> Tuple[str, str, str] | None:
         """Runs scanning until successful appointment is created or user
@@ -257,7 +202,7 @@ class Appointment:
         Returns:
             Tuple(month, day, time interval) if successful appointment is
             created.
-            None if dates_list is empty, because dates are expired or invalid
+            None if dates_list is empty, because dates are invalid or expired.
         """
         dates_list = self.get_dates_list()
         if not dates_list:
@@ -268,13 +213,13 @@ class Appointment:
                 # Auth again in case auth token expires
                 if free_day is None:
                     await run_auth(self.user_id)
-                async for free_time in free_day:
+                async for time in free_day:
                     # At first check cache
-                    cached_time = f"{self.city}{month}{day}{free_time}"
+                    cached_time = f"{self.city}{month}{day}{time}"
                     if REDIS_CLIENT.get(cached_time) is None:
                         REDIS_CLIENT.set(cached_time, 0, ex=240)
-                        if await self.create_app(month, day, free_time):
-                            return month, day, free_time
+                        if await self.find_free_time(month, day, time):
+                            return month, day, time
                     else:
                         await asyncio.sleep(uniform(1, 4))
                         loggers.log(self.user_id, f'{cached_time} in cache')

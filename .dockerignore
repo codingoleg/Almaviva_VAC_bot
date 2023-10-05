@@ -3,6 +3,7 @@
 /__pycache__/
 /db/users.db
 /pics/
+/scanner/templates/ru/persons.py
 /telegram/logs/*.log
 /venv/
 .gitignore

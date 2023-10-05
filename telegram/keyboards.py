@@ -2,7 +2,6 @@ import calendar
 from datetime import datetime, timedelta
 from typing import Tuple
 
-import db
 from . import message_names as msg
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.callback_data import CallbackData
@@ -18,17 +17,9 @@ CALENDAR_CALLBACK = CallbackData('simple_calendar', ACT, YEAR, MONTH, DAY)
 
 def start():
     """Shows start"""
-    btn_1 = InlineKeyboardButton(
-        msg.CHOOSE_START, callback_data=msg.CALLBACK_TO_START
-    )
+    btn_1 = InlineKeyboardButton(msg.CHOOSE_START,
+                                 callback_data=msg.CALLBACK_TO_START)
     return InlineKeyboardMarkup().add(btn_1)
-
-
-def num_of_persons():
-    """Shows number of persons"""
-    btn_1 = InlineKeyboardButton(msg.CHOOSE_1, callback_data=msg.CALLBACK_1)
-    btn_2 = InlineKeyboardButton(msg.CHOOSE_2, callback_data=msg.CALLBACK_2)
-    return InlineKeyboardMarkup().add(btn_1, btn_2)
 
 
 def cities():
@@ -39,40 +30,6 @@ def cities():
     return kb
 
 
-def check_acc():
-    """Checks account data"""
-    btn_1 = InlineKeyboardButton(
-        msg.CHOOSE_YES, callback_data=msg.CALLBACK_TO_PERSON_1
-    )
-    btn_2 = InlineKeyboardButton(msg.CHOOSE_NO, callback_data=msg.CALLBACK_ACC)
-    return InlineKeyboardMarkup().add(btn_1, btn_2)
-
-
-def check_person_1(user_id: int):
-    """Checks (Person 1) data"""
-    num_of_persons = db.select_data(user_id, db.ACCOUNT, db.NUM_OF_PERSONS)[0]
-    if num_of_persons == '1':
-        go_to = msg.CALLBACK_TO_END
-    else:
-        go_to = msg.CALLBACK_TO_PERSON_2
-    btn_1 = InlineKeyboardButton(msg.CHOOSE_YES, callback_data=go_to)
-    btn_2 = InlineKeyboardButton(
-        msg.CHOOSE_NO, callback_data=msg.CALLBACK_TO_PERSON_1
-    )
-    return InlineKeyboardMarkup().add(btn_1, btn_2)
-
-
-def check_person_2():
-    """Checks (Person 1) data"""
-    btn_1 = InlineKeyboardButton(
-        msg.CHOOSE_YES, callback_data=msg.CALLBACK_TO_END
-    )
-    btn_2 = InlineKeyboardButton(
-        msg.CHOOSE_NO, callback_data=msg.CALLBACK_TO_PERSON_2
-    )
-    return InlineKeyboardMarkup().add(btn_1, btn_2)
-
-
 def acc_delete():
     """Deletes account"""
     btn_1 = InlineKeyboardButton(msg.CHOOSE_YES, callback_data=msg.ACC_DELETE)
@@ -81,29 +38,23 @@ def acc_delete():
 
 def stop_scanning():
     """Stops scanning"""
-    btn_1 = InlineKeyboardButton(
-        msg.CHOOSE_YES, callback_data=msg.SCAN_STOPPED
-    )
+    btn_1 = InlineKeyboardButton(msg.CHOOSE_YES,
+                                 callback_data=msg.SCAN_STOPPED)
     return InlineKeyboardMarkup().add(btn_1)
 
 
 def admin_panel():
     """Admin panel. Buttons: Start | Stop | Ban | Unban"""
-    btn_1 = InlineKeyboardButton(
-        msg.CHOOSE_START, callback_data=msg.CALLBACK_START
-    )
-    btn_2 = InlineKeyboardButton(
-        msg.CHOOSE_STOP, callback_data=msg.CALLBACK_STOP
-    )
-    btn_3 = InlineKeyboardButton(
-        msg.CHOOSE_BAN, callback_data=msg.CALLBACK_BAN
-    )
-    btn_4 = InlineKeyboardButton(
-        msg.CHOOSE_UNBAN, callback_data=msg.CALLBACK_UNBAN
-    )
-    btn_5 = InlineKeyboardButton(
-        msg.CHOOSE_UNBAN, callback_data=msg.CALLBACK_USER_DELETE
-    )
+    btn_1 = InlineKeyboardButton(msg.CHOOSE_START,
+                                 callback_data=msg.CALLBACK_START)
+    btn_2 = InlineKeyboardButton(msg.CHOOSE_STOP,
+                                 callback_data=msg.CALLBACK_STOP)
+    btn_3 = InlineKeyboardButton(msg.CHOOSE_BAN,
+                                 callback_data=msg.CALLBACK_BAN)
+    btn_4 = InlineKeyboardButton(msg.CHOOSE_UNBAN,
+                                 callback_data=msg.CALLBACK_UNBAN)
+    btn_5 = InlineKeyboardButton(msg.CHOOSE_DELETE,
+                                 callback_data=msg.CALLBACK_USER_DELETE)
     return InlineKeyboardMarkup(row_width=2).add(btn_1, btn_2, btn_3, btn_4,
                                                  btn_5)
 
@@ -193,8 +144,8 @@ class Calendar:
             await query.answer(cache_time=60)
         # user picked a day button, return date
         if data[ACT] == self.day:
-            # removing inline keyboard
-            await query.message.delete_reply_markup()
+            # removing inline keyboard and message
+            await query.message.delete()
             return_data = True, datetime(int(data[YEAR]), int(data[MONTH]),
                                          int(data[DAY]))
         # user navigates to previous month, editing message with new calendar

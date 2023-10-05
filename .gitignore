@@ -1,5 +1,6 @@
 /venv/
 /.idea/
 /__pycache__/
+/scanner/templates/ru/persons.py
 /telegram/logs/*.log
 /db/users.db

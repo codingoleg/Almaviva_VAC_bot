@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Dict
 
 import asyncio
 import db
@@ -13,7 +14,6 @@ from asyncio.exceptions import CancelledError
 from config import token, admin_id, bot_storage_host
 from encrypting.encrypting import fernet
 from scanner import Appointment, YEAR, MOSCOW_TZ, run_auth
-from typing import Dict
 
 bot = Bot(token=token)
 dp = Dispatcher(bot, storage=redis.RedisStorage2(host=bot_storage_host))
@@ -64,7 +64,7 @@ async def dp_start(message: Message):
                                    db.IS_ACTIVE)[0]
     else:
         # Create 4 tables if user does not exist
-        for table in (db.ACCOUNT, db.PERSON_1, db.PERSON_2, db.BANNED):
+        for table in (db.ACCOUNT, db.BANNED):
             db.insert_row(table, (db.USER_ID,), (message.from_user.id,))
         is_active = False
 
@@ -98,23 +98,26 @@ async def dp_password(message: Message):
 
 
 @dp.message_handler(state='1')
-async def dp_num_of_persons(message: Message):
+async def dp_choose_city(message: Message):
     """Tries to authorize with entered email and password. If succeeded,
-    requests number of persons to appoint. Otherwise, sends warning message"""
+    requests city to appoint. Otherwise, sends warning message"""
     db.update_value(message.from_user.id, db.ACCOUNT, db.PASSWORD_ALMA,
                     fernet.encrypt(message.text.encode()))
     response = await run_auth(message.from_user.id)
     if response.status == 200:
         loggers.log(message.from_user.id, msg.AUTH_200, loggers.INFO)
         await bot.send_message(message.from_user.id, msg.AUTH_200)
-        await bot.send_message(message.from_user.id, msg.CHOOSE_NUM_OF_PERSONS,
-                               reply_markup=kb.num_of_persons())
+        await bot.send_message(message.from_user.id, msg.CHOOSE_CITY,
+                               reply_markup=kb.cities())
+        await dp.current_state().set_state('3')
     elif response.status in (400, 500):
         loggers.log(message.from_user.id, msg.AUTH_400_500, loggers.WARNING)
         await bot.send_message(message.from_user.id, msg.AUTH_400_500)
+        await dp.current_state().reset_state()
     elif response.status == 503:
         loggers.log(message.from_user.id, msg.AUTH_503, loggers.WARNING)
         await bot.send_message(message.from_user.id, msg.AUTH_503)
+        await dp.current_state().reset_state()
     else:
         loggers.log(
             message.from_user.id,
@@ -127,23 +130,14 @@ async def dp_num_of_persons(message: Message):
             ADMIN_ID,
             f'{msg.AUTH_ANOTHER} {response.status}: {message.from_user.id}'
         )
-    await dp.current_state().reset_state()
-
-
-@dp.callback_query_handler(text=[msg.CHOOSE_1, msg.CHOOSE_2])
-async def dp_city(callback: CallbackQuery):
-    """Requests city to appoint"""
-    await callback.answer()
-    db.update_value(callback.from_user.id, db.ACCOUNT, db.NUM_OF_PERSONS,
-                    callback.data)
-    await bot.send_message(callback.from_user.id, msg.CHOOSE_CITY,
-                           reply_markup=kb.cities())
-    await dp.current_state().set_state('3')
+        await dp.current_state().reset_state()
 
 
 @dp.callback_query_handler(state='3')
 async def dp_start_date(callback: CallbackQuery):
     """Shows inline calendar. Requests start date to appoint"""
+    await callback.message.delete()
+    await bot.send_message(callback.from_user.id, callback.data)
     db.update_value(callback.from_user.id, db.ACCOUNT, db.CITY,
                     fernet.encrypt(callback.data.encode()))
     await callback.message.answer(
@@ -184,10 +178,8 @@ async def dp_check_acc(callback: CallbackQuery, callback_data: Dict):
     """Request user for input data correctness:
      1. If data is not correct return to input number of persons.
      2. If data is correct, proceed to input (Person 1)"""
-    month = db.select_data(callback.from_user.id, db.ACCOUNT,
-                           db.ST_MONTH)[0]
-    day = db.select_data(callback.from_user.id, db.ACCOUNT,
-                         db.ST_DAY)[0]
+    month = db.select_data(callback.from_user.id, db.ACCOUNT, db.ST_MONTH)[0]
+    day = db.select_data(callback.from_user.id, db.ACCOUNT, db.ST_DAY)[0]
     start_date = datetime(int(YEAR), month, day)
 
     selected, single_date = await kb.Calendar(start_date).process_selection(
@@ -201,154 +193,10 @@ async def dp_check_acc(callback: CallbackQuery, callback_data: Dict):
             (db.FIN_MONTH, db.FIN_DAY),
             (single_date.month, single_date.day)
         )
-        num_of_persons = db.select_data(callback.from_user.id, db.ACCOUNT,
-                                        db.NUM_OF_PERSONS)[0]
-        city = db.select_data(callback.from_user.id, db.ACCOUNT, db.CITY)[0]
-        await callback.message.answer(msg.print_out_acc(num_of_persons, city))
-        await callback.message.answer(msg.IS_CORRECT,
-                                      reply_markup=kb.check_acc())
+        """Creates task to launch scanning"""
+        await create_task(callback.from_user.id)
+        await bot.send_message(callback.from_user.id, msg.SCAN_STARTED)
         await dp.current_state().reset_state()
-
-
-@dp.callback_query_handler(text=msg.CALLBACK_ACC)
-async def dp_num_of_persons_again(callback: CallbackQuery):
-    """If data is not correct return to input number of persons"""
-    await callback.answer()
-    await bot.send_message(callback.from_user.id, msg.CHOOSE_NUM_OF_PERSONS,
-                           reply_markup=kb.num_of_persons())
-
-
-@dp.callback_query_handler(text=msg.CALLBACK_TO_PERSON_1)
-async def dp_name_1(callback: CallbackQuery):
-    """(Person 1). If data is correct, request first name"""
-    await callback.answer()
-    await bot.send_message(callback.from_user.id,
-                           msg.enter_name(msg.FIRST_NAME, msg.PERSON_1))
-    await dp.current_state().set_state("10")
-
-
-@dp.message_handler(lambda message: message.text.isalpha(), state="10")
-async def dp_surname_1(message: Message):
-    """(Person 1). Requests last name"""
-    db.update_value(message.from_user.id, db.PERSON_1, db.NAME,
-                    fernet.encrypt(message.text.upper().encode()))
-    await bot.send_message(message.from_user.id,
-                           msg.enter_name(msg.LAST_NAME, msg.PERSON_1))
-    await dp.current_state().set_state("11")
-
-
-@dp.message_handler(lambda message: message.text.isalpha(), state="11")
-async def dp_passport_1(message: Message):
-    """(Person 1). Requests passport number"""
-    db.update_value(message.from_user.id, db.PERSON_1, db.SURNAME,
-                    fernet.encrypt(message.text.upper().encode()))
-    await message.answer(msg.enter_passport(msg.PERSON_1))
-    await dp.current_state().set_state("12")
-
-
-@dp.message_handler(lambda message: message.text.isdigit(), state="12")
-async def dp_phone_1(message: Message):
-    """(Person 1). Requests phone number"""
-    db.update_value(message.from_user.id, db.PERSON_1, db.PASSPORT,
-                    fernet.encrypt(message.text.encode()))
-    await message.answer(msg.enter_phone(msg.PERSON_1))
-    await dp.current_state().set_state("13")
-
-
-@dp.message_handler(lambda message: message.text.isdigit(), state="13")
-async def dp_email_1(message: Message):
-    """(Person 1). Requests email"""
-    db.update_value(message.from_user.id, db.PERSON_1, db.PHONE,
-                    fernet.encrypt(message.text.encode()))
-    await message.answer(msg.enter_email(msg.PERSON_1))
-    await dp.current_state().set_state("14")
-
-
-@dp.message_handler(state="14")
-async def dp_check_person_1(message: Message):
-    """(Person 1). Requests user for input data correctness:
-    1. If data is not correct return to input (Person 1) first name again.
-    2. If data is correct, proceed to the next person
-    (if num_of_persons == 2) or to the end"""
-    db.update_value(message.from_user.id, db.PERSON_1, db.EMAIL,
-                    fernet.encrypt(message.text.encode()))
-    # Retrieve all data for person 1 to print out
-    _, name, surname, passport, phone, email = [data for data in (
-        db.select_data(message.from_user.id, db.PERSON_1, '*'))]
-    await message.answer(msg.print_out_person(
-        msg.PERSON_1, name, surname, passport, phone, email))
-    await message.answer(msg.IS_CORRECT,
-                         reply_markup=kb.check_person_1(message.from_user.id))
-    await dp.current_state().reset_state()
-
-
-@dp.callback_query_handler(text=msg.CALLBACK_TO_PERSON_2)
-async def dp_name_2(callback: CallbackQuery):
-    """(Person 2). Requests first name"""
-    await callback.answer()
-    await bot.send_message(callback.from_user.id,
-                           msg.enter_name(msg.FIRST_NAME, msg.PERSON_2))
-    await dp.current_state().set_state("20")
-
-
-@dp.message_handler(lambda message: message.text.isalpha(), state="20")
-async def dp_surname_2(message: Message):
-    """(Person 2). Requests last name"""
-    db.update_value(message.from_user.id, db.PERSON_2, db.NAME,
-                    fernet.encrypt(message.text.upper().encode()))
-    await message.answer(msg.enter_name(msg.LAST_NAME, msg.PERSON_2))
-    await dp.current_state().set_state("21")
-
-
-@dp.message_handler(lambda message: message.text.isalpha(), state="21")
-async def dp_passport_2(message: Message):
-    """(Person 2). Requests passport number"""
-    db.update_value(message.from_user.id, db.PERSON_2, db.SURNAME,
-                    fernet.encrypt(message.text.upper().encode()))
-    await message.answer(msg.enter_passport(msg.PERSON_2))
-    await dp.current_state().set_state("22")
-
-
-@dp.message_handler(lambda message: message.text.isdigit(), state="22")
-async def dp_phone_2(message: Message):
-    """(Person 2). Requests phone number"""
-    db.update_value(message.from_user.id, db.PERSON_2, db.PASSPORT,
-                    fernet.encrypt(message.text.encode()))
-    await message.answer(msg.enter_phone(msg.PERSON_2))
-    await dp.current_state().set_state("23")
-
-
-@dp.message_handler(lambda message: message.text.isdigit(), state="23")
-async def dp_email_2(message: Message):
-    """(Person 2). Requests email"""
-    db.update_value(message.from_user.id, db.PERSON_2, db.PHONE,
-                    fernet.encrypt(message.text.encode()))
-    await message.answer(msg.enter_email(msg.PERSON_2))
-    await dp.current_state().set_state("24")
-
-
-@dp.message_handler(state="24")
-async def dp_check_person_2(message: Message):
-    """(Person 2). Request user for data correctness:
-    1. If data is not correct, return to input (Person 2) first name again.
-    2. If data is correct, proceed to the end"""
-    db.update_value(message.from_user.id, db.PERSON_2, db.EMAIL,
-                    fernet.encrypt(message.text.encode()))
-    # Retrieve all data for person 2 to print out
-    _, name, surname, passport, phone, email = [data for data in (
-        db.select_data(message.from_user.id, db.PERSON_2, '*'))]
-    await message.answer(msg.print_out_person(
-        msg.PERSON_1, name, surname, passport, phone, email))
-    await message.answer(msg.IS_CORRECT, reply_markup=kb.check_person_2())
-    await dp.current_state().reset_state()
-
-
-@dp.callback_query_handler(text=msg.CALLBACK_TO_END)
-async def dp_create_task(callback: CallbackQuery):
-    """Creates task to launch scanning"""
-    await callback.answer()
-    await create_task(callback.from_user.id)
-    await bot.send_message(callback.from_user.id, msg.SCAN_STARTED)
 
 
 @dp.message_handler(commands=['stop_scanning'], state='*')
@@ -412,12 +260,6 @@ async def dp_run_scanning(user_id: int):
         await bot.send_message(
             user_id, msg.successful_appointment(YEAR, month, day, free_time)
         )
-        # Msg for admin
-        await bot.send_message(
-            ADMIN_ID,
-            text=f'{user_id}: '
-                 f'{msg.successful_appointment(YEAR, month, day, free_time)}'
-        )
         loggers.log(
             user_id,
             msg.successful_appointment(YEAR, month, day, free_time),
@@ -426,8 +268,6 @@ async def dp_run_scanning(user_id: int):
         await cancel_task(user_id)
     elif app_result is None:
         loggers.log(user_id, msg.WRONG_DATES, loggers.WARNING)
-        await bot.send_message(ADMIN_ID, msg.SCAN_STOPPED)
-        await bot.send_message(ADMIN_ID, msg.WRONG_DATES)
         await cancel_task(user_id)
 
 
@@ -545,7 +385,7 @@ async def dp_delete_user(callback: CallbackQuery):
 
 
 @dp.message_handler(commands=['show_active_users'], state=msg.ADMIN)
-async def dp_choose_user(message: Message):
+async def show_active_users(message: Message):
     """Shows all users with launched scanner"""
     if users:
         for user_id in users:
@@ -558,7 +398,7 @@ async def dp_choose_user(message: Message):
 
 
 @dp.message_handler(commands=['show_ready_users'], state=msg.ADMIN)
-async def dp_choose_user(message: Message):
+async def show_ready_users(message: Message):
     """Shows all users with filled data"""
     ready_users = db.get_ready_users()
     if ready_users:

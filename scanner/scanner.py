@@ -135,12 +135,13 @@ class Appointment:
             else:
                 break
 
+        scanning = f'Scanning... {YEAR}/{month}/{day}'
+        current_time = datetime.now(MOSCOW_TZ).strftime('%H:%M:%S')
+        db.update_value(self.user_id, db.ACCOUNT, db.LAST_REQUEST,
+                        current_time)
+        loggers.log(self.user_id, scanning)
+
         if await response.json():
-            scanning = f'Scanning... {YEAR}/{month}/{day}'
-            current_time = datetime.now(MOSCOW_TZ).strftime('%H:%M:%S')
-            db.update_value(self.user_id, db.ACCOUNT, db.LAST_REQUEST,
-                            current_time)
-            loggers.log(self.user_id, scanning)
             try:
                 for line in await response.json():
                     if line and line['freeSpots']:
